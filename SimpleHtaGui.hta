@@ -1,0 +1,611 @@
+ <html>
+
+ <title>Simple HTA GUI For YouTube-dl</title>
+ <head>
+
+ <HTA:APPLICATION
+    APPLICATIONNAME="HTA Template"
+    SCROLL="yes"
+    SINGLEINSTANCE="yes"
+    WINDOWSTATE="normal"
+	ICON="SndVol.exe"
+ >
+ </head>
+
+<script language="VBScript">
+'Simple YouTube-dl GUI
+'!!!!!!!!!!! CHANGE DIRECTORY HERE !!!!!!!!!!!
+'!!!!!!!!!!! Notice that you must use / not \
+ strDefLoc = "C:/music/"
+ '!!!!!!!!!! ^^^^^^^^^^^^^^^^^^^^^^!!!!!!!!!!!
+ '!!!!!!!!!! up there ^ !!!!!!!!!!!!!!!!!!!!!!
+
+ 'Set other variables that are used in multiple subs
+ strYTCode = ""
+ strclip = ""
+ strType = ""
+
+'Code to run when HTA loads goes here
+Sub Window_OnLoad
+  'Set Window Size'
+	 window.resizeTo 420,540
+   'Create File Systom Object
+	 Set oFSO = CreateObject("Scripting.FileSystemObject")
+   'check to see if youtube-dl.exe is available, if not provide links'
+    if oFSO.FileExists("tools\youtube-dl.exe") then
+      strHTML = ""
+        helpArea.InnerHTML = strHTML
+    else
+      strHTML = "<font color='red'><b>Youtube-dl.exe Not Found in your tools folder.</b></font><br>"
+      strHTML = strHTML & "Your tools folder should be in the same folder as SimpleHTAGUI.hta<br>"
+      strHTML = strHTML & "Download the following tools and extract them into your tools folder.<br>"
+      strHTML = strHTML & "<a href='https://youtube-dl.org/'>youtube-dl.exe</a><br>"
+      strHTML = strHTML & "<a href='https://ffmpeg.org/download.html'>FFmpeg</a><br>"
+      strHTML = strHTML & "<a href='http://mp3splt.sourceforge.net/mp3splt_page/downloads.php'>mp3splt.exe</a><br>"
+      strHTML = strHTML & "<a href='https://squell.github.io/id3/'>id3.exe</a><br>"
+      helpArea.InnerHTML = strHTML
+    end if
+	 	If oFSO.FileExists("FileLocation.txt")  then
+			Set filetxt = oFSO.OpenTextFile("FileLocation.txt", 1)
+			strDefLoc = filetxt.readall
+		end if
+	 frmLoc.Value = strDefLoc
+   'Check clipboard for a youtube link. Paste it in if found
+		strclip=document.parentwindow.clipboardData.GetData("TEXT")
+		if instr(strclip, "youtu") then
+			sPaste
+		else
+			frmURL.value = "Paste a URL here."
+		end if
+
+End Sub
+
+'This is used by the "Paste" link on the HTML form.
+Sub sPaste
+	strclip=document.parentwindow.clipboardData.GetData("TEXT")
+	frmURL.value = strclip
+	checktype
+	makeCode
+end Sub
+
+' Check to see if we're dealing with a single file or a playlist YouTube URL.
+sub Checktype
+	strBox = frmURL.Value
+	if instr(strBox, "youtu") then
+		if instr(strBox, "list") then
+      ' If it's a list, check some radio buttons and run the PLExtras subroutine
+			strType = "playlist"
+			URLType.Play.checked = True
+			MediaType.Audio.checked = True
+			PLExtras
+		else
+      'If it's an individual file, assume that the user wants the audio and video
+      'Check some radio buttons and run the vidExtras sub'
+			strType = "individual"
+			URLType.Ind.Checked = True
+			MediaType.Video.checked = True
+			vidExtras
+		end if
+	end if
+end sub
+
+sub PLExtras
+  'Set up the HTML for the playlist options. Specifically what items in the playlist to download'
+	if URLType.Play.checked Then
+		strHTML = "<a title='Select where in the playlist to start downloading. Used mostly if you need to resume downloading.'><input type='text' class='text' name='frmPLStart' value=1 size=2 onkeyup='makeCode'>Track Start</a><BR>"
+		strHTML = strHTML & "<a title='Select where in the playlist to stop downloading. 0 will go to the end of playlist'><input type='text'  class='text' name='frmPLend' value=0 size=2 onkeyup='makeCode'>Track End</a><BR>"
+		strHTML = strHTML & "<a title='Add numbers as a prefix to the file name.'><input type='checkbox' name='frmANumber' value='checked' onclick='makeCode'>Auto-number Files</a>"
+	  'Render the HTML in "SpanArea"
+		SpanArea.InnerHTML = strHTML
+		frmANumber.Checked = true
+	else
+		SpanArea.InnerHTML = ""
+	end if
+  'makeCode is the sub that generates the command with appropriate arguments and switches'
+	makeCode
+end sub
+
+'Set up the HTML form for Video options'
+sub VidExtras
+	if mediaType.video.checked Then
+	strHTML = "<input type='radio' id='Normal' name='fileType' value='normal' title='Download whatever YouTube has. No conversion' onclick='makeCode'><a title='Download whatever YouTube has. No conversion'><label for='Normal'>Direct</label></a><br>"
+	strHTML = strHTML & "<input type='radio' id='Decode' name='fileType' value='decode' title='Convert file to MP4. Only use this if you are having problems' onclick='makeCode'><a title='Convert file to MP4. Only use this if you are having problems'><label for='Decode'>MP4</label></a>"
+	vidArea.InnerHTML = strHTML
+
+	strHTML2 = "<input type='radio' id='full' name='resType' value='full' title='Top quality' onclick='makeCode'><a title='Top quality'><label for='full'>Full</label></a>"
+	strHTML2 = strHTML2 & "<input type='radio' id='1080p' name='resType' value='1080p' title='Downloads up to 1080p' onclick='makeCode'><a title='Downloads up to 1080p'><label for='1080p'>1080p</label></a><BR>"
+	strHTML2 = strHTML2 & "<input type='radio' id='r720p' name='resType' value='r720p' title='Downloads up to 720pn' onclick='makeCode'><a title='Downloads up to 720p'><label for='r720p'>720p</label></a>"
+	strHTML2 = strHTML2 & "<input type='radio' id='480p' name='resType' value='480p' title='Downloads up to 480p' onclick='makeCode'><a title='Downloads up to 480p'><label for='480p'>480p</label></a>"
+	resArea.InnerHTML = strHTML2
+
+  'This sets the default values if you choose video. Most people will probably want this gone'
+	fileType.normal.checked = true
+	resType.r720p.checked = true
+
+	else
+	vidArea.InnerHTML = ""
+	resArea.InnerHTML = ""
+	end if
+  'Update or generate the commandline command'
+	makeCode
+end sub
+
+'Shows Trim options (file location basically) in the post processing area'
+sub showTrim
+	if TrimArea.InnerHTML = "" then
+		strHTML = "<Table><TR><TD padding=3></TD></TR>"
+		strHTML = strHTML & "<TR><TD colspan=2>Folder to be Processed:<br><input type='text' class='text' onkeyup='sPProcess' name='trimLoc' size=47 title='Use \ not /. This folder must contain mp3s'>"
+		strHTML = strHTML & "<a href='#a' onclick='sBack' title='Move back a folder'>&#8592;</TD></TR>"
+		strHTML = strHTML & "<TR><TD colspan=2><a href=#a onclick='sBrowse' title'Browse from the location listed below'>Browse</a>"
+    strHTML = strHTML & " - <a href='#a' onclick=openExplorer'trimLoc'>Open in Explorer</a></td></tr>"
+		strHTML = strHTML & "<TR><TD valign='top'><b>Audio</b><BR>"
+		strHTML = strHTML & " - <a href=#a onclick='sTrim' title='Trim silence from the ends of the the mp3'>Trim Silence</a><br>"
+		strHTML = strHTML & " - <a href=#a onclick='showID' title='Set tags in the mp3s'>Set Tags</a></TD>"
+		strHTML = strHTML & "<TD valign='top'><B>Video</B><BR> - <a href=#a onclick='sRename' title='Rename Videos to MP4'>Rename to mp4</a></TD></TR></TABLE>"
+		TrimArea.InnerHTML = strHTML
+		if frmHLoc.Value = "" then
+			strTrimLoc = Replace(frmLoc.Value, "/", "\")
+			trimLoc.Value = strTrimLoc
+		else
+			strTrimLoc = Replace(frmHLoc.Value, "/", "\")
+			trimLoc.Value = strTrimLoc
+		end if
+		window.resizeTo 410,600
+		sTrim
+		idArea.InnerHTML = ""
+	else
+		TrimArea.InnerHTML = ""
+		idArea.InnerHTML = ""
+		makeCode
+		window.resizeTo 410,540
+	End if
+end sub
+
+'Build the HTML for setting up Tags in your MP3s
+sub showID
+	strHTML = "<Table><TR><TD><BR>This Automatically sets Track Number and Title based on the information in the FileName.<BR>Artist and Album are Optional<BR><BR>"
+	strHTML = strHTML & "<input type='text' class='text' name='frmArtist' size=15 title='Artist' onKeyup='sTag'> Artist<br>"
+	strHTML = strHTML & "<input type='text' class='text' name='frmAlbum' size=15 title='Album' onkeyup='sTag'> Album<br>"
+	strHTML = strHTML & "<BR>Click Run Code to execute.<BR></td></TR></Table>"
+	idArea.InnerHTML = strHTML
+	frmArtist.Value = frmHArtist.Value
+	frmAlbum.Value = frmHAlbum.Value
+	sTag
+end sub
+
+'Generate the command line commands'
+sub makeCode
+	strURL = frmURL.value
+		strAddress = frmURL.value
+
+		'Playlist
+		if URLType(0).Checked Then
+			strOutput = trim(frmLoc.Value)
+			if frmANumber.Checked then
+				strNumbers = "%(playlist_index)s-"
+			else
+				strNumbers = ""
+			end if
+			'mp3
+			if mediaType(0).checked then
+				strAV = "-x --embed-thumbnail --audio-format mp3 "
+			end if
+			'video
+			if mediaType(1).checked then
+				strAV = ""
+				'direct
+				if fileType(0).checked then
+					strFT = ""
+					'full
+					if resType(0).checked then
+						strFT = ""
+					'1080p
+					elseif resType(1).checked then
+						strFT = "-f ""best[height<=?1080]"""
+					'720p
+					elseif resType(2).checked then
+						strFT = "-f ""best[height<=?720]"""
+					'480p
+					elseif resType(3).checked then
+						strFT = "-f ""best[height<=?480]"""
+					else
+						strFT = ""
+					end if
+				'convert
+				else
+					'full convert
+					if resType(0).checked then
+						strFT = "-f --recode-video mp4"
+					else
+					'480p convert
+					end if
+					strFT = "-f ""best[height<=?480]"" --recode-video mp4"
+				end if
+			end if
+			strstart = frmPLStart.Value
+
+			if frmPLend.Value <> 0 then
+				strEnd = " --playlist-end " & frmPLend.value
+			else
+				strEnd = ""
+			end if
+			str2 = "%(playlist)s/" & strNumbers & "%(title)s.%(ext)s"
+			frmCode.value = "tools\youtube-dl.exe --output """& strOutput & str2 &""" --playlist-start " & strstart & strEnd & " -i " & strAV & strFT & " """ & strAddress & """ "
+
+
+		'INDIVIDUAL
+		elseif URLType(1).Checked Then
+			'audio
+			if mediaType(0).checked then
+				strAV = "-x --embed-thumbnail --audio-format mp3 "
+			end if
+			'video
+			if mediaType(1).checked then
+				strAV = ""
+				'direct
+				if fileType(0).checked then
+					'full
+					if resType(0).checked then
+						strFT = ""
+					'1080p
+					elseif resType(1).checked then
+						strFT = "-f ""best[height<=?1080]"""
+					'720p
+					elseif resType(2).checked then
+						strFT = "-f ""best[height<=?720]"""
+					'480p
+					elseif resType(3).checked then
+						strFT = "-f ""best[height<=?480]"""
+					else
+						strFT = ""
+					end if
+				'convert
+				else
+					'full con
+					if resType(0).checked then
+						strFT = "-f --recode-video mp4"
+					'1080p	con
+					elseif resType(1).checked then
+						strFT = "-f ""best[height<=?1080]"" --recode-video mp4"
+					'720p	con
+					elseif resType(2).checked then
+						strFT = "-f ""best[height<=?720]"" --recode-video mp4"
+					'480p con
+					elseif resType(3).checked then
+						strFT = "-f ""best[height<=?480]"" --recode-video mp4"
+					else
+						strFT = "-f --recode-video mp4"
+					end if
+				end if
+			end if
+
+			strOutput = trim(frmLoc.Value)
+			str2 = "%(title)s.%(ext)s"
+			frmCode.value = "tools\youtube-dl.exe --output """& strOutput & str2 &""" -i --no-playlist " & strAV & strFT & " """ & strAddress & """ "
+
+		end if
+	idArea.InnerHTML = ""
+	TrimArea.InnerHTML = ""
+
+end sub
+
+'Add the item to the log and run whatever is in the Code textarea'
+sub sDownload
+	'Write Log
+	Set oFSO = CreateObject("Scripting.FileSystemObject")
+	strFilename = frmLoc.value & "DL-Log.txt"
+	Set filetxt = oFSO.OpenTextFile(strFilename, 8, True)
+	strDate = now()
+	strD = FormatDateTime(strDate,2)
+	strT = FormatDateTime(strDate,4)
+	strDate = strD & " - " & strT
+	filetxt.WriteLine(strDate)
+	filetxt.WriteLine(frmURL.Value)
+	filetxt.WriteLine(frmCode.Value)
+	filetxt.WriteLine("_____")
+	filetxt.Close
+	'Run CODE
+	strDownload = frmCode.Value
+	Set objShell = CreateObject("Wscript.Shell")
+	objShell.Run (strDownload), 1, False
+end sub
+
+' This will rename all mkv and webm files in the specified folder to *.mp4
+' I made this because just seems less confusing for Windows. It should allow default player
+' to play the video file.
+sub sRename
+	strCounter = 0
+	strAddress = trimLoc.Value
+  'Write to the log'
+	Set oFSO = CreateObject("Scripting.FileSystemObject")
+	strFilename = frmLoc.value & "DL-Log.txt"
+	Set filetxt = oFSO.OpenTextFile(strFilename, 8, True)
+	strDate = now()
+	strD = FormatDateTime(strDate,2)
+	strT = FormatDateTime(strDate,4)
+	strDate = strD & " - " & strT
+	filetxt.WriteLine(strDate)
+	filetxt.WriteLine("Renamed to MP4")
+
+	Set objFolder = oFSO.GetFolder(strAddress)
+	Set colFiles = objFolder.Files
+	For Each objFile in colFiles
+  	if instr(objFile.Name,".webm") then
+  		strFile = objFile.Path
+  		filetxt.WriteLine(strFile)
+  		strNewFile = Replace(strFile, ".webm", ".mp4")
+  		oFSO.MoveFile strFile, strNewFile
+  		counter = counter + 1
+  	elseif instr(objFile.Name,".mkv") then
+  		strFile = objFile.Path
+  		filetxt.WriteLine(strFile)
+  		strNewFile = Replace(strFile, ".mkv", ".mp4")
+  		oFSO.MoveFile strFile, strNewFile
+  		counter = counter + 1
+  	end if
+	Next
+	filetxt.WriteLine("_____")
+	idArea.InnerHTML = ""
+	if counter = "" then counter = "0"
+	msgbox counter & " files have been renamed"
+end sub
+
+'The folder chooser dialogue, copied from somewhere online'
+Function PickFolder(strStartDir)
+	Dim SA, F
+	Set SA = CreateObject("Shell.Application")
+	Set F = SA.BrowseForFolder(0, "Choose a folder", 0, strStartDir)
+	If (Not F Is Nothing) Then
+	  PickFolder = F.Items.Item.path
+	End If
+	Set F = Nothing
+	Set SA = Nothing
+End Function
+
+'These two browse subs need to be refactored. For some reason I have on defaulting
+' root and the other defaults to whatever is your default location.
+sub sBrowse
+	str1 = trimLoc.Value
+	x = PickFolder(str1)
+	trimLoc.Value = x
+	sPProcess
+end sub
+
+sub sBrowse2
+		x = PickFolder("")
+		frmLoc.Value = replace(x, "\", "/")
+		strAddress = trim(frmLoc.Value)
+		if right(strAddress, 1) <> "/" then
+			frmLoc.Value = strAddress & "/"
+	end if
+	makeCode
+end sub
+
+'I forgot what this does'
+sub sPProcess
+	if instr(idArea.InnerHTML, "Automatically") then
+		sTag
+		frmHLoc.Value = trimLoc.Value
+	else
+		sTrim
+		frmHLoc.Value = trimLoc.Value
+	end if
+end sub
+
+'Setup the trim arguments'
+sub sTrim
+	strAddress = ""
+	dim arrLoc
+	strAddress = trim(trimLoc.Value)
+	Set objShell = CreateObject("Wscript.Shell")
+	frmCode.value = "tools\mp3splt.exe -q -f -r -o \trimmed\@f """ & strAddress& """"
+	idArea.InnerHTML = "<BR>This will Remove silence from the beginning and end of each file. A new folder called 'Trimmed' will be created and the trimmed files will be placed there.<BR><BR>Click Run Code to execute."
+end sub
+
+'This is a really ugly way to back out of folders in the postprocessing location form'
+sub sBack
+	dim arrLoc
+	strAddress = trim(trimLoc.Value)
+	if right(strAddress, 1) = "\" then
+		y = Len(strAddress) - 1
+		strAddress = left(strAddress, y)
+	end if
+	arrLoc = split(strAddress, "\")
+	x = ubound(arrLoc)-1
+	for i = 0 to x
+		if arrLoc(i) <> "" then
+			strBackLoc = strBackLoc & arrLoc(i) & "\"
+		end if
+	next
+	trimLoc.value = strBackLoc
+	sPProcess
+end sub
+
+'Set up the command for setting ID tags in MP3 Files'
+sub sTag
+	strAddress = Chr(34) & trim(trimLoc.Value)
+	if right(strAddress, 1) = "\" then
+		y = Len(strAddress) - 1
+		strAddress = left(strAddress, y)
+	end if
+	strAlbum = trim(frmAlbum.Value)
+	strArtist = trim(frmArtist.Value)
+	strExtra = ""
+	if strAlbum <> "" then
+		strExtra = strExtra & "-l """ & strAlbum & """ "
+		frmHAlbum.Value = strAlbum
+	end if
+	if strArtist <> "" then
+		strExtra = strExtra & "-a """ & strArtist & """ "
+	end if
+	frmHArtist.Value = strArtist
+	frmHAlbum.Value = strAlbum
+	frmCode.value = "tools\id3.exe -2 -rFRAME " & strExtra & "-m " & strAddress & "\%n-%t.mp3"""
+end sub
+
+'Monitor key strokes and start downloading if Enter is pressed
+Sub RunScript
+      If window.event.Keycode = 13 Then
+          sDownload
+      End If
+End Sub
+
+'Save your default location setting'
+sub sSave
+	Set oFSO = CreateObject("Scripting.FileSystemObject")
+	Set filetxt = oFSO.OpenTextFile("FileLocation.txt", 2, True)
+	filetxt.WriteLine(frmLoc.Value)
+	filetxt.Close
+	frmHLoc.Value = frmLoc.Value
+	makeCode
+end sub
+
+sub cmd
+  Set objShell = CreateObject("Wscript.Shell")
+  objShell.Run ("cmd.exe ."), 1, False
+end sub
+
+'This copies the text in the code window to the clipboard. Mostly used when the commands don't work correctly
+'like when youtube-dl.exe needs to be updated'
+sub sCopy
+	strCopy = frmCode.value
+	document.parentwindow.clipboardData.SetData "TEXT", strCopy
+end sub
+
+sub update
+Set objShell = CreateObject("Wscript.Shell")
+objShell.Run ("tools\youtube-dl.exe -U"), 1, False
+end sub
+
+Function openExplorer(fldr)
+
+  if fldr = "frmLoc" Then
+      fldrVal = frmLoc.value
+  elseif fldr = "trimLoc" Then
+      fldrVal = trimLoc.value
+  end if
+  strFldr = replace(fldrVal, "/", "\")
+  strCMD = "explorer.exe " & strFldr
+  Set objShell = CreateObject("Wscript.Shell")
+  objShell.Run (strCMD), 1, False
+end Function
+</script>
+<style>
+
+ BODY
+ {
+       background-color: buttonface;
+          Font: arial,sans-serif
+       margin-top: 10px;`
+       margin-left: 20px;
+       margin-right: 20px;
+       margin-bottom: 5px;
+ }
+ .button
+ {
+	background-color:#bbbbbb;
+       width: 91px;
+       height: 25px;
+       font-family: arial,sans-serif;
+       font-size: 8pt;
+ }
+a:link, a:visited {
+    color:#121212;
+    text-decoration: underline;
+    cursor: auto;
+}
+input.text {
+   border: 1px solid #aaa;
+}
+textarea {
+   border: 1px solid #ccc;
+}
+
+a:link:hover{
+    color:#bbbbbb;
+}
+
+  P{
+       font-family: arial,sans-serif;
+       font-size: 10pt;
+}
+ td
+ {
+       font-family: arial,sans-serif;
+       font-size: 10pt;
+
+ }
+ #scroll
+ {
+    height:100%;
+    overflow:auto;
+ }
+
+ SELECT.FixedWidth
+ {
+  width: 17em;  /* maybe use px for pixels or pt for points here */
+ }
+</style>
+<body onkeypress="RunScript">
+<p><span id="HelpArea" class="FixedWidth"></span></p>
+<p>
+<Table name='tblDL'>
+  <TR><TD><B title='This app uses youtube-dl to download playlists and individual files as audio or video'>Download Files from Youtube</b></TR></TD>
+
+
+  <TR>
+    <TD> <input type="text" class="text" name="frmURL" onkeyup=makecode size=50 title='Youtube URL. Press F5 to paste'><BR><a href=#a onclick='sPaste' title='Press F5 to paste youtube link'>Paste</a></TD>
+  </TR>
+  <TR>
+    <TD>
+      <Table>
+        <TR>
+          <TD bgcolor=#d1d1d1>
+           <input type="radio" id="Play" name="URLType" value="Playlist" onclick=PLExtras title='A folder will be created named after the playlist'><a title='A folder will be created named after the playlist'><label for='Play'>Playlist</label></a><br>
+           <input type="radio" id="Ind" name="URLType" value="Individual" onclick=PLExtras title='Download one song in the folder specified below'><a title='Download one song in the folder specified below'><label for='Ind'>Individual</label></a><br>
+          </TD>
+          <TD bgcolor=#d9d9d9>
+             <input type="radio" id="Audio" name="MediaType" value="Audio" onclick=vidExtras title='Download only mp3s'><a title='Download only mp3s'><label for='Audio'>Audio</label></label></a><br>
+             <input type="radio" id="Video" name="MediaType" value="Video" onclick=vidExtras title='Download the video'><a title='Download the video'><label for='Video'>Video</label></a>
+          </TD>
+          <TD bgcolor=#d1d1d1 id=vidOption>
+            <span id="vidArea" class="FixedWidth"></span>
+          </TD>
+          <TD bgcolor=#d9d9d9 id=resOption>
+            <span id="resArea" class="FixedWidth"></span>
+          </TD>
+        </TR>
+      </TABLE>
+    </TD>
+  </TR>
+
+  <TR>
+    <TD><span id="SpanArea" class="FixedWidth"></span></TD>
+  </TR>
+
+  <TR><TD><a title='Use / not \. A folder will be made with playlist name.'>Output Location:</a><BR>
+    <input type="text"  class="text" name="frmLoc" onkeyup=makecode size=50 title='Use / not \. A folder will be made with playlist name.'></TD>
+  </TR>
+  <TR><TD><a href=#a onclick='sBrowse2' title='Browse to where you want the files to be saved.'>Browse</a>
+  - <a href='#a' onclick=sSave title='Save this folder as your default'>Save</a> -
+  <a href='#a' onclick=openExplorer'frmLoc'>Open in Explorer</a></TD>
+  </TR>
+
+</TABLE>
+ <p>
+<B title='This uses mp3splt to remove silence from the beginning and end of mp3s'>Post Process Files</B>
+ - <a href='#a' onclick='showTrim'>show/hide</a>
+ <span id="TrimArea" class="FixedWidth"></span>
+ <span id="idArea" class="FixedWidth"></span>
+ <P><TABLE><TR><TD><input class='button' TYPE=BUTTON value='Run Code' name='btnRun'  onClick='sDownload' title='Run Code'></TD></TR>
+
+ <TR><TD><B title='This is the code sent to youtube-dl. Maybe helpful for trouble shooting'>CODE</b><BR></TD></TR>
+ <TR><TD><Textarea name='frmCode' class='text' cols=38 rows=4 onclick='sCopy' title='This is what gets sent to youtube-dl. Click to copy'>Code goes here.</textarea></TD></TR>
+ <TR><TD>
+<a href=#a onclick='cmd' title='Open command prompt here.'>cmd</a>
+ -
+<a href=#a onclick='update' title='Update youtube-dl.exe using youtube-dl.exe -U'>Update</a>
+ </TD></TR></TABLE>
+ <input type="Hidden" name="frmHArtist"><input type="Hidden" name="frmHAlbum"><input type="Hidden" name='frmHLoc'>
+ </body>
+ </html>
